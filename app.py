@@ -1,144 +1,235 @@
 import streamlit as st
-import datetime
 import pandas as pd
+from datetime import datetime
 
-st.set_page_config(page_title="EquipShare Hub", page_icon="🔬", layout="wide")
+# --- Page Configuration ---
+st.set_page_config(
+    page_title="EquipShare Hub",
+    page_icon="🔬",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# Local Data Initialization
-if 'resources' not in st.session_state:
-    st.session_state.resources = [
-        {"id": 101, "name": "NVIDIA RTX 4090 GPU Server", "category": "Computing", "prereq": "Python & CUDA Certificate", "owner": "AI Lab Dept", "status": "Available"},
-        {"id": 102, "name": "Industrial 3D Printer (Ultimaker)", "category": "Fabrication", "prereq": "3D CAD Training", "owner": "Makerspace", "status": "Available"},
-        {"id": 103, "name": "Digital Oscilloscope 100MHz", "category": "Electronics", "prereq": "Basic Electronics Lab Passed", "owner": "ECE Dept", "status": "Available"}
+# --- Custom CSS Styling for a Sleek, Futuristic Look ---
+st.markdown("""
+    <style>
+    /* Main background & font styling */
+    .main {
+        background-color: #0e1117;
+        color: #f0f2f6;
+    }
+    
+    /* Custom Header styling */
+    .main-header {
+        font-size: 2.5rem;
+        font-weight: 800;
+        background: linear-gradient(90deg, #4facfe 0%, #00f2fe 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin-bottom: 0px;
+    }
+    
+    .sub-header {
+        font-size: 1.1rem;
+        color: #8a99ad;
+        margin-bottom: 2rem;
+    }
+
+    /* Card styling for Inventory */
+    .eq-card {
+        background-color: #1a1f2c;
+        border: 1px solid #2d3748;
+        padding: 20px;
+        border-radius: 12px;
+        margin-bottom: 15px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        transition: transform 0.2s ease;
+    }
+    .eq-card:hover {
+        border-color: #4facfe;
+        transform: translateY(-2px);
+    }
+    
+    /* Sidebar customization */
+    [data-testid="stSidebar"] {
+        background-color: #161b22;
+        border-right: 1px solid #21262d;
+    }
+    
+    /* Success / Info box tweaks */
+    div.stAlert {
+        border-radius: 10px;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# --- Initialize Session State for Inventory & Bookings ---
+if "inventory" not in st.session_state:
+    st.session_state.inventory = [
+        {"id": 1, "name": "NVIDIA RTX 4090 GPU Server", "category": "Computing", "status": "Available", "specs": "24GB VRAM, CUDA 12.0"},
+        {"id": 2, "name": "Industrial 3D Printer (Ultimaker)", "category": "Fabrication", "status": "Available", "specs": "PLA/ABS, Dual Extrusion"},
+        {"id": 3, "name": "Digital Oscilloscope 100MHz", "category": "Electronics", "status": "In-Use", "specs": "2-Channel, 1GS/s"}
     ]
 
-if 'bookings' not in st.session_state:
+if "bookings" not in st.session_state:
     st.session_state.bookings = []
 
-if 'audit_logs' not in st.session_state:
+if "audit_logs" not in st.session_state:
     st.session_state.audit_logs = []
 
-def log_action(user, action, details):
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    st.session_state.audit_logs.append({"Timestamp": timestamp, "User": user, "Action": action, "Details": details})
+# --- Sidebar Portal Navigation ---
+st.sidebar.markdown("### 🔐 User Access Portal")
+role = st.sidebar.radio(
+    "Select Your Role:",
+    ["Student / Researcher (User)", "Lab Manager (Owner)", "Audit & Compliance Log"]
+)
 
-# App Header
-st.title("🔬 EquipShare Hub")
-st.caption("Trusted Institutional Resource & Equipment Sharing Platform")
+st.sidebar.markdown("---")
+st.sidebar.info("💡 **Tip:** Use the sidebar to switch between roles for testing student requests and lab management approvals.")
 
-# Sidebar Role Switcher
-st.sidebar.title("🔐 User Access Portal")
-role = st.sidebar.radio("Select Your Role:", ["Student / Researcher (User)", "Lab Manager (Owner)", "Audit & Compliance Log"])
+# --- Main Application Header ---
+st.markdown('<p class="main-header">EquipShare Hub</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-header">Trusted Institutional Resource & Equipment Sharing Platform</p>', unsafe_allow_html=True)
 
-# ----------------- ROLE 1: USER VIEW -----------------
+# ==========================================
+# 1. STUDENT / RESEARCHER VIEW
+# ==========================================
 if role == "Student / Researcher (User)":
-    st.header("📋 Discover & Request Resources")
+    col1, col2 = st.columns([1.2, 1])
     
-    # 1. Resource Search & Discovery
-    search = st.text_input("Search equipment or spaces by name/category:")
-    filtered_items = [r for r in st.session_state.resources if search.lower() in r['name'].lower() or search.lower() in r['category'].lower()]
+    with col1:
+        st.markdown("### 📦 Available Inventory")
+        search_query = st.text_input("🔍 Search equipment or spaces by name/category:", "")
+        
+        # Filter inventory
+        filtered_items = [
+            item for item in st.session_state.inventory 
+            if search_query.lower() in item['name'].lower() or search_query.lower() in item['category'].lower()
+        ]
+        
+        for item in filtered_items:
+            status_color = "🟢" if item['status'] == "Available" else "🔴"
+            st.markdown(f"""
+                <div class="eq-card">
+                    <h4>{status_color} {item['name']}</h4>
+                    <p style="color: #a0aec0; margin: 2px 0;"><b>Category:</b> {item['category']} | <b>Specs:</b> {item['specs']}</p>
+                    <p style="margin: 2px 0;"><b>Status:</b> <code>{item['status']}</code></p>
+                </div>
+            """, unsafe_allow_html=True)
+            
+    with col2:
+        st.markdown("### 📝 Submit Booking Request")
+        with st.form("booking_form"):
+            user_name = st.text_input("Your Name / Roll No:")
+            available_names = [item['name'] for item in st.session_state.inventory if item['status'] == "Available"]
+            
+            selected_eq = st.selectbox("Select Equipment:", available_names if available_names else ["No Equipment Available"])
+            reason = st.text_area("Reason / Project Work Details:")
+            skill_id = st.text_input("Enter Skill Certificate ID / Reference (Safety Clearance):")
+            
+            submitted = st.form_submit_button("🚀 Submit Request")
+            
+            if submitted:
+                if not user_name or not reason or not skill_id:
+                    st.warning("⚠️ Please fill in all fields before submitting.")
+                elif not available_names:
+                    st.error("❌ No equipment currently available for booking.")
+                else:
+                    new_booking = {
+                        "id": len(st.session_state.bookings) + 1,
+                        "user": user_name,
+                        "equipment": selected_eq,
+                        "reason": reason,
+                        "skill_id": skill_id,
+                        "status": "Pending Approval",
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    }
+                    st.session_state.bookings.append(new_booking)
+                    
+                    # Log to audit
+                    st.session_state.audit_logs.append({
+                        "Action": "Booking Requested",
+                        "User": user_name,
+                        "Target": selected_eq,
+                        "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    })
+                    
+                    st.success("🎉 Booking request submitted successfully! Awaiting Lab Manager review.")
+                    st.balloons()
+
+    # User's active status
+    st.markdown("---")
+    st.markdown("### 📋 My Active Requests & Status")
+    if st.session_state.bookings:
+        df_bookings = pd.DataFrame(st.session_state.bookings)
+        st.dataframe(df_bookings, use_container_width=True)
+    else:
+        st.info("No active booking requests found.")
+
+# ==========================================
+# 2. LAB MANAGER (OWNER) VIEW
+# ==========================================
+elif role == "Lab Manager (Owner)":
+    st.markdown("### 🛠️ Lab Manager Control Center")
+    st.write("Review incoming student requests, manage equipment status, and oversee lab resource allocation.")
     
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("Available Inventory")
-        for item in filtered_items:
-            with st.expander(f"⚙️ {item['name']} ({item['category']})"):
-                st.write(f"**Owner:** {item['owner']}")
-                st.write(f"**Prerequisites:** {item['prereq']}")
-                st.write(f"**Status:** {item['status']}")
-                
+        st.metric(label="Total Equipment Registered", value=len(st.session_state.inventory))
     with col2:
-        st.subheader("Submit Booking Request")
-        user_name = st.text_input("Your Name / Roll No:")
-        selected_item = st.selectbox("Select Equipment:", [item['name'] for item in st.session_state.resources])
-        purpose = st.text_area("Reason / Project Work Details:")
-        qualification_proof = st.text_input("Enter Skill Certificate ID / Reference:")
+        pending_count = len([b for b in st.session_state.bookings if b['status'] == "Pending Approval"])
+        st.metric(label="Pending Approvals", value=pending_count)
         
-        if st.button("Submit Request"):
-            if user_name and qualification_proof:
-                req_id = len(st.session_state.bookings) + 1
-                new_booking = {
-                    "req_id": req_id,
-                    "user": user_name,
-                    "item": selected_item,
-                    "purpose": purpose,
-                    "proof": qualification_proof,
-                    "status": "Pending Verification",
-                    "checkin_notes": "Not Checked In",
-                    "return_notes": "Not Returned"
-                }
-                st.session_state.bookings.append(new_booking)
-                log_action(user_name, "Requested Resource", f"Requested {selected_item}")
-                st.success(f"Request #{req_id} submitted! Sent to Lab Manager for Approval.")
-            else:
-                st.warning("Please fill all details and qualification proof.")
-
     st.markdown("---")
-    st.subheader("🔄 My Active Lifecycle & Check-In Status")
-    for b in st.session_state.bookings:
-        if b['user'] == user_name:
-            st.info(f"**Booking #{b['req_id']}** for `{b['item']}` | Status: **{b['status']}**")
-            if b['status'] == "Approved":
-                c1, c2 = st.columns(2)
-                with c1:
-                    notes = st.text_input(f"Check-in Condition Note (#{b['req_id']}):", "Equipment looks scratch-free and working.")
-                    if st.button(f"Mark Check-In (#{b['req_id']})"):
-                        b['status'] = "Checked-In"
-                        b['checkin_notes'] = notes
-                        log_action(user_name, "Check-In Completed", f"Initial Note: {notes}")
-                        st.rerun()
-            elif b['status'] == "Checked-In":
-                notes_ret = st.text_input(f"Return Condition Note (#{b['req_id']}):", "Returned in original working condition.")
-                if st.button(f"Mark Return (#{b['req_id']})"):
-                    b['status'] = "Returned & Closed"
-                    b['return_notes'] = notes_ret
-                    log_action(user_name, "Item Returned", f"Final Note: {notes_ret}")
-                    st.rerun()
-
-# ----------------- ROLE 2: OWNER VIEW -----------------
-elif role == "Lab Manager (Owner)":
-    st.header("🛡️ Owner & Manager Dashboard")
+    st.markdown("### 📥 Pending & Active Requests")
     
-    st.subheader("1. Add New Institutional Resource")
-    with st.form("add_resource"):
-        res_name = st.text_input("Resource / Equipment Name:")
-        res_cat = st.selectbox("Category:", ["Computing", "Fabrication", "Electronics", "Testing Space"])
-        res_prereq = st.text_input("Eligibility Requirement (e.g. Mandatory Training):")
-        submitted = st.form_submit_button("List Resource")
-        if submitted and res_name:
-            new_id = 100 + len(st.session_state.resources) + 1
-            st.session_state.resources.append({"id": new_id, "name": res_name, "category": res_cat, "prereq": res_prereq, "owner": "Lab Manager", "status": "Available"})
-            log_action("Lab Manager", "Added Resource", f"Listed {res_name}")
-            st.success("Resource Listed Successfully!")
-
-    st.markdown("---")
-    st.subheader("2. Review Pending Booking Requests")
-    if not st.session_state.bookings:
-        st.write("No requests submitted yet.")
+    if st.session_state.bookings:
+        for idx, booking in enumerate(st.session_state.bookings):
+            with st.container():
+                st.markdown(f"""
+                    <div class="eq-card">
+                        <h4>Request #{booking['id']} - {booking['equipment']}</h4>
+                        <p><b>Requested By:</b> {booking['user']} | <b>Time:</b> {booking['timestamp']}</p>
+                        <p><b>Reason:</b> {booking['reason']}</p>
+                        <p><b>Safety Cert ID:</b> <code>{booking['skill_id']}</code> | <b>Current Status:</b> <b>{booking['status']}</b></p>
+                    </div>
+                """, unsafe_allow_html=True)
+                
+                if booking['status'] == "Pending Approval":
+                    col_a, col_b = st.columns(2)
+                    if col_a.button(f"✅ Approve #{booking['id']}", key=f"app_{idx}"):
+                        booking['status'] = "Approved & Active"
+                        # Update equipment status
+                        for eq in st.session_state.inventory:
+                            if eq['name'] == booking['equipment']:
+                                eq['status'] = "In-Use"
+                        st.session_state.audit_logs.append({
+                            "Action": "Booking Approved",
+                            "User": "Lab Manager",
+                            "Target": booking['equipment'],
+                            "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        })
+                        st.rerun()
+                        
+                    if col_b.button(f"❌ Reject #{booking['id']}", key=f"rej_{idx}"):
+                        booking['status'] = "Rejected"
+                        st.session_state.audit_logs.append({
+                            "Action": "Booking Rejected",
+                            "User": "Lab Manager",
+                            "Target": booking['equipment'],
+                            "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        })
+                        st.rerun()
+                st.markdown("---")
     else:
-        for b in st.session_state.bookings:
-            col_a, col_b, col_c = st.columns([3, 1, 1])
-            with col_a:
-                st.write(f"**Request #{b['req_id']}** by `{b['user']}` for **{b['item']}**")
-                st.write(f"*Purpose:* {b['purpose']} | *Proof ID:* {b['proof']}")
-                st.write(f"*Current Status:* `{b['status']}`")
-            with col_b:
-                if b['status'] == "Pending Verification":
-                    if st.button(f"Approve #{b['req_id']}"):
-                        b['status'] = "Approved"
-                        log_action("Lab Manager", "Approved Booking", f"Approved for {b['user']}")
-                        st.rerun()
-            with col_c:
-                if b['status'] == "Pending Verification":
-                    if st.button(f"Reject #{b['req_id']}"):
-                        b['status'] = "Rejected"
-                        log_action("Lab Manager", "Rejected Booking", f"Rejected for {b['user']}")
-                        st.rerun()
+        st.info("No pending requests to review.")
 
-# ----------------- ROLE 3: AUDIT LOG VIEW -----------------
+# ==========================================
+# 3. AUDIT & COMPLIANCE LOG VIEW
+# ==========================================
 elif role == "Audit & Compliance Log":
-    st.header("📜 Immutable Audit History & Activity Logs")
-    st.write("Every important action (Approvals, Rejections, Check-ins, Returns) is recorded transparently.")
+    st.markdown("### 📊 Immutable Audit History & Activity Logs")
+    st.write("Every important action (Approvals, Rejections, Check-ins, Returns) is recorded transparently for institutional governance.")
     
     if st.session_state.audit_logs:
         df_logs = pd.DataFrame(st.session_state.audit_logs)
