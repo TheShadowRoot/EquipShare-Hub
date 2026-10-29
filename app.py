@@ -34,7 +34,6 @@ def load_data():
 
     expected_cols = ["id", "user", "student_id", "university", "equipment", "reason", "skill_id", "proof_filename", "return_deadline", "shipping_info", "status"]
     
-    # If file is empty or missing columns, initialize with dummy record so Audit Log is never empty
     if df.empty or not all(col in df.columns for col in expected_cols):
         df = pd.DataFrame([{
             "id": 1,
@@ -376,4 +375,7 @@ else:
             if not return_df.empty:
                 st.dataframe(return_df, use_container_width=True)
                 return_req_ids = return_df["id"].tolist()
-                selected_r_id = st.selectbox("Select Return Request ID to Verify:", return_req_ids, key="ret_sel"
+                selected_r_id = st.selectbox("Select Return Request ID to Verify:", return_req_ids, key="ret_sel")
+                
+                if selected_r_id:
+                    ret_row = return_df[return_
