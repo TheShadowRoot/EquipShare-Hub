@@ -5,7 +5,11 @@ import re
 from datetime import datetime, timedelta
 
 CSV_FILE = "requests.csv"
+UPLOAD_DIR = "uploads"
 ADMIN_PASSWORD = "admin"
+
+# Ensure uploads directory exists
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 EQUIPMENT_STOCK = {
     "NVIDIA RTX 4090 GPU Server": 3,
@@ -143,9 +147,12 @@ if role == "Student / Researcher Portal":
                         <div class="status-approved">
                             <b>✅ Request #{req_id} - Active Allocation</b><br>
                             Equipment: <b>{eq}</b> | <b>Return Deadline: {deadline}</b><br>
-                            Handover Proof: <i>{proof}</i>
+                            Handover Record: <i>{proof}</i>
                         </div>
                     """, unsafe_allow_html=True)
+                    # Show image preview if proof file exists in uploads folder
+                    if proof.startswith("uploads/") and os.path.exists(proof):
+                        st.image(proof, caption=f"Handover Proof for Request #{req_id}", width=300)
                 elif status == "Return Requested":
                     st.markdown(f"""
                         <div class="status-pending">
@@ -183,14 +190,18 @@ if role == "Student / Researcher Portal":
             st.subheader("🔄 Return Allocated Equipment")
             return_req_id = st.selectbox("Select Active Request ID to Return:", active_handovers["id"].tolist())
             
-            # Student uploads proof when requesting return
             return_proof_file = st.file_uploader("Upload Return Condition Proof (Photo/Video of equipment):", type=["png", "jpg", "jpeg", "mp4"], key="student_return_proof")
             
             if st.button("📤 Submit Return Request with Proof"):
-                r_proof_name = return_proof_file.name if return_proof_file is not None else "No Proof Uploaded"
+                r_proof_path = "No Proof Uploaded"
+                if return_proof_file is not None:
+                    r_proof_path = os.path.join(UPLOAD_DIR, return_proof_file.name)
+                    with open(r_proof_path, "wb") as f:
+                        f.write(return_proof_file.getbuffer())
+                
                 fresh_df = load_data()
                 fresh_df.loc[fresh_df["id"] == return_req_id, "status"] = "Return Requested"
-                fresh_df.loc[fresh_df["id"] == return_req_id, "proof_filename"] = f"Return Proof: {r_proof_name}"
+                fresh_df.loc[fresh_df["id"] == return_req_id, "proof_filename"] = r_proof_path
                 save_data(fresh_df)
                 st.success(f"✅ Return request submitted with proof for item #{return_req_id}! Awaiting Lab Manager approval.")
                 st.rerun()
@@ -277,9 +288,13 @@ else:
                     manager_proof = st.file_uploader("Upload Handover Proof (Optional):", type=["png", "jpg", "jpeg", "mp4"], key="p_proof")
                     
                     if st.button("Confirm Approval/Rejection"):
-                        p_name = manager_proof.name if manager_proof is not None else "No Proof Uploaded"
-                        fresh_df = load_data()
+                        p_path = "No Proof Uploaded"
+                        if manager_proof is not None:
+                            p_path = os.path.join(UPLOAD_DIR, manager_proof.name)
+                            with open(p_path, "wb") as f:
+                                f.write(manager_proof.getbuffer())
                         
+                        fresh_df = load_data()
                         if "Approve" in p_action:
                             if current_stock.get(sel_row['equipment'], 0) <= 0:
                                 st.error("Cannot approve! Equipment is out of stock.")
@@ -287,7 +302,7 @@ else:
                                 due_date = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
                                 fresh_df.loc[fresh_df["id"] == selected_p_id, "status"] = "Handed Over"
                                 fresh_df.loc[fresh_df["id"] == selected_p_id, "return_deadline"] = due_date
-                                fresh_df.loc[fresh_df["id"] == selected_p_id, "proof_filename"] = f"Handover Proof: {p_name}"
+                                fresh_df.loc[fresh_df["id"] == selected_p_id, "proof_filename"] = p_path
                                 save_data(fresh_df)
                                 st.success(f"Request #{selected_p_id} approved! 7-day return deadline set ({due_date}).")
                                 st.rerun()
@@ -312,21 +327,26 @@ else:
                 
                 if selected_r_id:
                     ret_row = return_df[return_df["id"] == selected_r_id].iloc[0]
-                    st.write(f"**Student:** {ret_row['user']} | **Equipment:** {ret_row['equipment']} | **Student's Return Proof:** {ret_row['proof_filename']}")
+                    st.write(f"**Student:** {ret_row['user']} | **Equipment:** {ret_row['equipment']}")
                     
-                    # Manager can approve or reject the student's return request
+                    # Show student's uploaded proof image if it exists
+                    proof_file_path = ret_row['proof_filename']
+                    if proof_file_path.startswith("uploads/") and os.path.exists(proof_file_path):
+                        st.image(proof_file_path, caption=f"Student's Return Proof for Request #{selected_r_id}", width=350)
+                    else:
+                        st.write(f"**Proof File Path/Info:** {proof_file_path}")
+                    
                     ret_action = st.radio("Manager Return Action:", ["Approve Return & Restore Stock", "Reject Return (Issue with condition)"], key="ret_act")
                     
                     if st.button("Confirm Return Decision"):
                         fresh_df = load_data()
                         if "Approve" in ret_action:
                             fresh_df.loc[fresh_df["id"] == selected_r_id, "status"] = "Returned"
-                            fresh_df.loc[fresh_df["id"] == selected_r_id, "proof_filename"] = f"Approved Return: {ret_row['proof_filename']}"
                             save_data(fresh_df)
                             st.success(f"Return for Request #{selected_r_id} approved successfully! Stock restored.")
                             st.rerun()
                         else:
-                            fresh_df.loc[fresh_df["id"] == selected_r_id, "status"] = "Handed Over" # Sent back to active if rejected
+                            fresh_df.loc[fresh_df["id"] == selected_r_id, "status"] = "Handed Over"
                             fresh_df.loc[fresh_df["id"] == selected_r_id, "proof_filename"] = f"Return Rejected: Resubmit Proof"
                             save_data(fresh_df)
                             st.warning(f"Return request #{selected_r_id} rejected. Student will need to resubmit valid proof.")
