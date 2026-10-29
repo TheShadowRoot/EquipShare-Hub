@@ -4,9 +4,9 @@ import os
 import re
 
 CSV_FILE = "requests.csv"
-ADMIN_PASSWORD = "admin"  # Tum apna password yahan change kar sakti ho
+ADMIN_PASSWORD = "admin"  # Tum ise change kar sakti ho
 
-# Official Authorized Skill IDs issued by the institution
+# Authorized Skill IDs for institutional clearance
 VALID_SKILL_IDS = [
     "SK-101 (AI Safety & Ethics)", 
     "SK-102 (Advanced GPU Cluster Safety)", 
@@ -41,7 +41,6 @@ if role == "Student / Researcher (User)":
         equipment = st.selectbox("Select Equipment:", ["NVIDIA RTX 4090 GPU Server", "Industrial 3D Printer (Ultimaker)", "Oscilloscope 100MHz"])
         reason = st.text_area("Reason / Project Work Details (Minimum 20 characters):")
         
-        # Foolproof protection: Select from official authorized Skill IDs only!
         skill_id = st.selectbox("Select Certified Skill Clearance ID:", VALID_SKILL_IDS)
         
         submitted = st.form_submit_button("🚀 Submit Request")
@@ -98,7 +97,7 @@ elif role == "Lab Manager (Owner)":
         if not df_requests.empty:
             st.dataframe(df_requests)
             
-            req_ids = df_requests["id"].tolist()ch
+            req_ids = df_requests["id"].tolist()
             selected_id = st.selectbox("Select Request ID to Update:", req_ids) if req_ids else None
             
             if selected_id:
@@ -106,4 +105,19 @@ elif role == "Lab Manager (Owner)":
                 if st.button("Update Status"):
                     df_requests.loc[df_requests["id"] == selected_id, "status"] = "Approved" if action == "Approve" else "Rejected"
                     save_data(df_requests)
-                    st.success(f"Request #{selected_id} has been {action
+                    st.success(f"Request #{selected_id} has been {action.lower()}ed!")
+                    st.rerun()
+        else:
+            st.info("No pending requests to review.")
+    elif password != "":
+        st.error("❌ Incorrect Password! Only Lab Managers are authorized.")
+    else:
+        st.info("Please enter the password to access the control panel.")
+
+else:
+    st.subheader("📜 Audit & Compliance Log")
+    st.write("System audit logs and historical tracking.")
+    if not df_requests.empty:
+        st.dataframe(df_requests)
+    else:
+        st.info("No logs available.")
