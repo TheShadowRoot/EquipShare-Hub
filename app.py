@@ -50,9 +50,9 @@ st.title("⚙️ EquipShare Hub")
 st.markdown("### *Trusted Institutional Resource & Equipment Sharing Platform*")
 st.markdown("---")
 
-role = st.sidebar.radio("Select Portal Access:", ["Student / Researcher Portal", "Lab Manager (Owner)", "Audit & Compliance Log"])
+# Secure Role Selection: Audit log option removed from public view
+role = st.sidebar.radio("Select Portal Access:", ["Student / Researcher Portal", "Lab Manager (Owner)"])
 
-# Always load fresh data from CSV to ensure real-time sync without manual browser refresh
 df_requests = load_data()
 
 def get_available_stock():
@@ -68,7 +68,6 @@ def get_available_stock():
 if role == "Student / Researcher Portal":
     st.subheader("🎓 Student Authentication & Verification")
     
-    # Persistent login check: If already logged in, do not ask for login again
     if "authenticated_student" not in st.session_state:
         with st.expander("🔐 Student Login (Required to Access Portal)", expanded=True):
             student_id_input = st.text_input("Enter Official Roll No / Student ID:", placeholder="e.g., 2026/AIML/01 or BTECH1024")
@@ -93,7 +92,6 @@ if role == "Student / Researcher Portal":
         current_student_id = st.session_state["authenticated_student"]
         current_student_name = st.session_state["student_name"]
         
-        # Logout option if needed
         if st.sidebar.button("🚪 Logout Student"):
             del st.session_state["authenticated_student"]
             del st.session_state["student_name"]
@@ -208,75 +206,80 @@ if role == "Student / Researcher Portal":
     else:
         st.warning("🔒 Please verify your Student Roll No / ID above to access the booking dashboard.")
 
-elif role == "Lab Manager (Owner)":
-    st.subheader("🔒 Lab Manager Control Center")
+else:
+    # SECURE LAB MANAGER PORTAL (Contains Control Center & Audit Log restricted behind password)
+    st.subheader("🔒 Lab Manager Secure Control Center")
     password = st.text_input("Enter Lab Manager Password:", type="password", placeholder="Enter admin password...")
     
     if password == ADMIN_PASSWORD:
         st.success("🔓 Access Granted!")
-        st.write("Review incoming requests instantly, manage stock, and upload condition proofs.")
         
-        # Always fetch latest data for manager so new requests show up instantly
+        # Use tabs inside secure manager view for clean organization
+        mgr_tab, audit_tab = st.tabs(["⚡ Request Management & Stock", "📜 Audit & Compliance Log"])
+        
         manager_df = load_data()
         current_stock = get_available_stock()
         
-        st.markdown("---")
-        st.subheader("📊 Current Live Stock Status")
-        for eq_name, qty in current_stock.items():
-            st.write(f"- **{eq_name}**: `{qty}` available out of `{EQUIPMENT_STOCK[eq_name]}` total units.")
+        with mgr_tab:
+            st.write("Review incoming requests instantly, manage stock, and upload condition proofs.")
+            
+            st.markdown("---")
+            st.subheader("📊 Current Live Stock Status")
+            for eq_name, qty in current_stock.items():
+                st.write(f"- **{eq_name}**: `{qty}` available out of `{EQUIPMENT_STOCK[eq_name]}` total units.")
 
-        st.markdown("---")
-        st.subheader("📋 Pending & Active System Requests")
-        if not manager_df.empty:
-            st.dataframe(manager_df, use_container_width=True)
-            
-            req_ids = manager_df["id"].tolist()
-            selected_id = st.selectbox("Select Request ID to Manage:", req_ids) if req_ids else None
-            
-            if selected_id:
-                selected_row = manager_df[manager_df["id"] == selected_id].iloc[0]
-                st.write(f"**Selected Request:** Student: {selected_row['user']} | Equipment: {selected_row['equipment']} | Status: {selected_row['status']}")
+            st.markdown("---")
+            st.subheader("📋 Pending & Active System Requests")
+            if not manager_df.empty:
+                st.dataframe(manager_df, use_container_width=True)
                 
-                action = st.selectbox("Select Action / Status Update:", ["Approve & Hand Over (Upload Proof)", "Reject", "Mark as Returned & Verify Condition"])
-                uploaded_proof = st.file_uploader("Upload Condition Photo/Video Proof (Handover / Return):", type=["png", "jpg", "jpeg", "mp4"])
+                req_ids = manager_df["id"].tolist()
+                selected_id = st.selectbox("Select Request ID to Manage:", req_ids) if req_ids else None
                 
-                if st.button("Confirm Status & Save Proof"):
-                    proof_name = uploaded_proof.name if uploaded_proof is not None else "No File Uploaded"
-                    latest_fresh_df = load_data()
+                if selected_id:
+                    selected_row = manager_df[manager_df["id"] == selected_id].iloc[0]
+                    st.write(f"**Selected Request:** Student: {selected_row['user']} | Equipment: {selected_row['equipment']} | Status: {selected_row['status']}")
                     
-                    if "Approve" in action:
-                        if current_stock.get(selected_row['equipment'], 0) <= 0:
-                            st.error("Cannot approve! Equipment is out of stock.")
-                        else:
-                            latest_fresh_df.loc[latest_fresh_df["id"] == selected_id, "status"] = "Handed Over"
-                            latest_fresh_df.loc[latest_fresh_df["id"] == selected_id, "proof_filename"] = f"Handover: {proof_name}"
+                    action = st.selectbox("Select Action / Status Update:", ["Approve & Hand Over (Upload Proof)", "Reject", "Mark as Returned & Verify Condition"])
+                    uploaded_proof = st.file_uploader("Upload Condition Photo/Video Proof (Handover / Return):", type=["png", "jpg", "jpeg", "mp4"])
+                    
+                    if st.button("Confirm Status & Save Proof"):
+                        proof_name = uploaded_proof.name if uploaded_proof is not None else "No File Uploaded"
+                        latest_fresh_df = load_data()
+                        
+                        if "Approve" in action:
+                            if current_stock.get(selected_row['equipment'], 0) <= 0:
+                                st.error("Cannot approve! Equipment is out of stock.")
+                            else:
+                                latest_fresh_df.loc[latest_fresh_df["id"] == selected_id, "status"] = "Handed Over"
+                                latest_fresh_df.loc[latest_fresh_df["id"] == selected_id, "proof_filename"] = f"Handover: {proof_name}"
+                                save_data(latest_fresh_df)
+                                st.success(f"Request #{selected_id} approved and marked as Handed Over with proof!")
+                                st.rerun()
+                        elif "Reject" in action:
+                            latest_fresh_df.loc[latest_fresh_df["id"] == selected_id, "status"] = "Rejected"
+                            latest_fresh_df.loc[latest_fresh_df["id"] == selected_id, "proof_filename"] = "Rejected"
                             save_data(latest_fresh_df)
-                            st.success(f"Request #{selected_id} approved and marked as Handed Over with proof!")
+                            st.success(f"Request #{selected_id} has been rejected.")
                             st.rerun()
-                    elif "Reject" in action:
-                        latest_fresh_df.loc[latest_fresh_df["id"] == selected_id, "status"] = "Rejected"
-                        latest_fresh_df.loc[latest_fresh_df["id"] == selected_id, "proof_filename"] = "Rejected"
-                        save_data(latest_fresh_df)
-                        st.success(f"Request #{selected_id} has been rejected.")
-                        st.rerun()
-                    elif "Returned" in action:
-                        latest_fresh_df.loc[latest_fresh_df["id"] == selected_id, "status"] = "Returned"
-                        latest_fresh_df.loc[latest_fresh_df["id"] == selected_id, "proof_filename"] = f"Return Verified: {proof_name}"
-                        save_data(latest_fresh_df)
-                        st.success(f"Equipment for Request #{selected_id} marked as Returned safely with condition proof!")
-                        st.rerun()
-        else:
-            st.info("No requests to review.")
+                        elif "Returned" in action:
+                            latest_fresh_df.loc[latest_fresh_df["id"] == selected_id, "status"] = "Returned"
+                            latest_fresh_df.loc[latest_fresh_df["id"] == selected_id, "proof_filename"] = f"Return Verified: {proof_name}"
+                            save_data(latest_fresh_df)
+                            st.success(f"Equipment for Request #{selected_id} marked as Returned safely with condition proof!")
+                            st.rerun()
+            else:
+                st.info("No requests to review.")
+                
+        with audit_tab:
+            st.subheader("📜 Institutional Audit Trail & Compliance Records")
+            st.write("Complete secured history of all user requests, allocations, and safety proofs.")
+            if not manager_df.empty:
+                st.dataframe(manager_df, use_container_width=True)
+            else:
+                st.info("No audit logs available.")
+                
     elif password != "":
-        st.error("❌ Incorrect Password!")
+        st.error("❌ Incorrect Password! Unauthorized access denied.")
     else:
-        st.info("Please enter the administrator password.")
-
-else:
-    st.subheader("📜 Audit & Compliance Log")
-    audit_df = load_data()
-    st.write("Complete institutional audit trail, stock logs, and return safety proofs.")
-    if not audit_df.empty:
-        st.dataframe(audit_df, use_container_width=True)
-    else:
-        st.info("No audit logs available.")
+        st.info("Please enter the administrator password to unlock secure manager features.")
