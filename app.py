@@ -41,8 +41,15 @@ def save_data(df):
 
 st.set_page_config(page_title="EquipShare Hub", page_icon="⚙️", layout="wide")
 
+# Complete CSS to hide Streamlit Header, Menu, Footer and Fork Button permanently
 st.markdown("""
     <style>
+    #MainMenu {visibility: hidden;}
+    header {visibility: hidden;}
+    footer {visibility: hidden;}
+    .stDeployButton {display:none;}
+    div[data-testid="stToolbar"] {visibility: hidden;}
+    
     .main { background-color: #0e1117; }
     h1 { color: #00adb5; font-family: 'Inter', sans-serif; }
     .stButton>button {
@@ -247,7 +254,6 @@ else:
     if password == ADMIN_PASSWORD:
         st.success("🔓 Access Granted!")
         
-        # Organized tabs for Manager: New Requests, Active/Return Requests, and Audit Logs
         req_tab, return_tab, audit_tab = st.tabs(["⚡ Pending Requests", "🔄 Return Requests Queue", "📜 Audit & Compliance Log"])
         
         manager_df = load_data()
