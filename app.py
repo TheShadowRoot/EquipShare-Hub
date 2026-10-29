@@ -26,7 +26,7 @@ VALID_SKILL_IDS = [
 def load_data():
     if os.path.exists(CSV_FILE):
         df = pd.read_csv(CSV_FILE)
-        text_cols = ["user", "student_id", "university", "equipment", "reason", "skill_id", "proof_filename", "return_deadline", "status"]
+        text_cols = ["user", "student_id", "university", "equipment", "reason", "skill_id", "proof_filename", "return_deadline", "shipping_info", "status"]
         for col in text_cols:
             if col not in df.columns:
                 df[col] = ""
@@ -36,7 +36,7 @@ def load_data():
     else:
         return pd.DataFrame(columns=[
             "id", "user", "student_id", "university", "equipment", 
-            "reason", "skill_id", "proof_filename", "return_deadline", "status"
+            "reason", "skill_id", "proof_filename", "return_deadline", "shipping_info", "status"
         ])
 
 def save_data(df):
@@ -76,7 +76,7 @@ def get_available_stock():
     stock = EQUIPMENT_STOCK.copy()
     current_df = load_data()
     if not current_df.empty:
-        approved_df = current_df[current_df["status"].isin(["Approved", "Handed Over", "Return Requested"])]
+        approved_df = current_df[current_df["status"].isin(["Approved", "Handed Over", "Dispatched via Courier", "Return Requested"])]
         for eq in approved_df["equipment"]:
             if eq in stock and stock[eq] > 0:
                 stock[eq] -= 1
@@ -140,16 +140,25 @@ if role == "Student / Researcher Portal":
                 req_id = row["id"]
                 proof = str(row.get("proof_filename", "")).strip().replace("\\", "/")
                 deadline = row.get("return_deadline", "N/A")
+                shipping = row.get("shipping_info", "N/A")
                 
                 if status in ["Approved", "Handed Over"]:
                     st.markdown(f"""
                         <div class="status-approved">
-                            <b>✅ Request #{req_id} - Active Allocation</b><br>
+                            <b>✅ Request #{req_id} - Active Allocation (Campus Pickup)</b><br>
                             Equipment: <b>{eq}</b> | <b>Return Deadline: {deadline}</b>
                         </div>
                     """, unsafe_allow_html=True)
                     if proof and os.path.exists(proof):
                         st.image(proof, caption=f"Handover Proof for Request #{req_id}", width=300)
+                elif status == "Dispatched via Courier":
+                    st.markdown(f"""
+                        <div class="status-approved">
+                            <b>🚚 Request #{req_id} - DISPATCHED VIA SECURE COURIER</b><br>
+                            Equipment: <b>{eq}</b> | <b>Tracking Details: {shipping}</b><br>
+                            <b>Return Deadline: {deadline}</b>
+                        </div>
+                    """, unsafe_allow_html=True)
                 elif status == "Return Requested":
                     st.markdown(f"""
                         <div class="status-pending">
@@ -166,8 +175,6 @@ if role == "Student / Researcher Portal":
                             Equipment <b>{eq}</b> return has been verified and approved by the manager.
                         </div>
                     """, unsafe_allow_html=True)
-                    if proof and os.path.exists(proof):
-                        st.image(proof, caption=f"Verified Return Proof for Request #{req_id}", width=300)
                 elif status == "Rejected":
                     st.markdown(f"""
                         <div class="status-rejected">
@@ -185,7 +192,7 @@ if role == "Student / Researcher Portal":
         else:
             st.info("ℹ️ You have no active requests. Submit a booking below.")
 
-        active_handovers = my_reqs[my_reqs["status"] == "Handed Over"] if not my_reqs.empty else pd.DataFrame()
+        active_handovers = my_reqs[my_reqs["status"].isin(["Handed Over", "Dispatched via Courier"])] if not my_reqs.empty else pd.DataFrame()
         if not active_handovers.empty:
             st.markdown("---")
             st.subheader("🔄 Return Allocated Equipment")
@@ -248,6 +255,7 @@ if role == "Student / Researcher Portal":
                         "skill_id": skill_id,
                         "proof_filename": "Awaiting Handover",
                         "return_deadline": "N/A",
+                        "shipping_info": "N/A",
                         "status": "Pending"
                     }])
                     updated_df = pd.concat([live_df, new_row], ignore_index=True)
@@ -286,10 +294,15 @@ else:
                     sel_row = pending_df[pending_df["id"] == selected_p_id].iloc[0]
                     st.write(f"**Student:** {sel_row['user']} | **Equipment:** {sel_row['equipment']} | **Reason:** {sel_row['reason']}")
                     
-                    p_action = st.radio("Action:", ["Approve & Hand Over", "Reject Request"], key="p_act")
-                    manager_proof = st.file_uploader("Upload Handover Proof (Optional):", type=["png", "jpg", "jpeg", "mp4"], key="p_proof")
+                    p_action = st.radio("Action:", ["Approve for Campus Handover", "Approve & Dispatch via Secure Courier", "Reject Request"], key="p_act")
                     
-                    if st.button("Confirm Approval/Rejection"):
+                    courier_tracking = ""
+                    if "Courier" in p_action:
+                        courier_tracking = st.text_input("Enter Courier Partner & Tracking/Consignment ID:", placeholder="e.g., Blue Dart - AW109283475")
+
+                    manager_proof = st.file_uploader("Upload Handover/Dispatch Slip Proof (Optional):", type=["png", "jpg", "jpeg", "mp4"], key="p_proof")
+                    
+                    if st.button("Confirm Approval & Action"):
                         p_path = "No Proof Uploaded"
                         if manager_proof is not None:
                             p_path = os.path.join(UPLOAD_DIR, manager_proof.name).replace("\\", "/")
@@ -297,7 +310,7 @@ else:
                                 f.write(manager_proof.getbuffer())
                         
                         fresh_df = load_data()
-                        if "Approve" in p_action:
+                        if "Campus Handover" in p_action:
                             if current_stock.get(sel_row['equipment'], 0) <= 0:
                                 st.error("Cannot approve! Equipment is out of stock.")
                             else:
@@ -305,13 +318,29 @@ else:
                                 fresh_df.loc[fresh_df["id"] == selected_p_id, "status"] = "Handed Over"
                                 fresh_df.loc[fresh_df["id"] == selected_p_id, "return_deadline"] = due_date
                                 fresh_df.loc[fresh_df["id"] == selected_p_id, "proof_filename"] = p_path
+                                fresh_df.loc[fresh_df["id"] == selected_p_id, "shipping_info"] = "Campus Pickup"
                                 save_data(fresh_df)
-                                st.success(f"Request #{selected_p_id} approved! 7-day return deadline set ({due_date}).")
+                                st.success(f"Request #{selected_p_id} approved for campus handover! 7-day return deadline set ({due_date}).")
+                                st.rerun()
+                        elif "Courier" in p_action:
+                            if current_stock.get(sel_row['equipment'], 0) <= 0:
+                                st.error("Cannot dispatch! Equipment is out of stock.")
+                            elif len(courier_tracking.strip()) < 3:
+                                st.error("⚠️ Please enter a valid Courier Name & Tracking ID!")
+                            else:
+                                due_date = (datetime.now() + timedelta(days=10)).strftime("%Y-%m-%d") # 10 days for remote delivery
+                                fresh_df.loc[fresh_df["id"] == selected_p_id, "status"] = "Dispatched via Courier"
+                                fresh_df.loc[fresh_df["id"] == selected_p_id, "return_deadline"] = due_date
+                                fresh_df.loc[fresh_df["id"] == selected_p_id, "proof_filename"] = p_path
+                                fresh_df.loc[fresh_df["id"] == selected_p_id, "shipping_info"] = courier_tracking.strip()
+                                save_data(fresh_df)
+                                st.success(f"Request #{selected_p_id} dispatched via courier with tracking ID: {courier_tracking}!")
                                 st.rerun()
                         else:
                             fresh_df.loc[fresh_df["id"] == selected_p_id, "status"] = "Rejected"
                             fresh_df.loc[fresh_df["id"] == selected_p_id, "return_deadline"] = "N/A"
                             fresh_df.loc[fresh_df["id"] == selected_p_id, "proof_filename"] = "Rejected"
+                            fresh_df.loc[fresh_df["id"] == selected_p_id, "shipping_info"] = "N/A"
                             save_data(fresh_df)
                             st.success(f"Request #{selected_p_id} rejected.")
                             st.rerun()
@@ -329,7 +358,7 @@ else:
                 
                 if selected_r_id:
                     ret_row = return_df[return_df["id"] == selected_r_id].iloc[0]
-                    st.write(f"**Student:** {ret_row['user']} | **Equipment:** {ret_row['equipment']}")
+                    st.write(f"**Student:** {ret_row['user']} | **Equipment:** {ret_row['equipment']} | **Delivery Type:** {ret_row['shipping_info']}")
                     
                     proof_file_path = str(ret_row['proof_filename']).strip().replace("\\", "/")
                     if proof_file_path and os.path.exists(proof_file_path):
@@ -341,29 +370,3 @@ else:
                     
                     if st.button("Confirm Return Decision"):
                         fresh_df = load_data()
-                        if "Approve" in ret_action:
-                            fresh_df.loc[fresh_df["id"] == selected_r_id, "status"] = "Returned"
-                            save_data(fresh_df)
-                            st.success(f"Return for Request #{selected_r_id} approved successfully! Stock restored.")
-                            st.rerun()
-                        else:
-                            fresh_df.loc[fresh_df["id"] == selected_r_id, "status"] = "Handed Over"
-                            fresh_df.loc[fresh_df["id"] == selected_r_id, "proof_filename"] = f"Return Rejected: Resubmit Proof"
-                            save_data(fresh_df)
-                            st.warning(f"Return request #{selected_r_id} rejected. Student will need to resubmit valid proof.")
-                            st.rerun()
-            else:
-                st.info("No pending equipment return requests from students.")
-
-        with audit_tab:
-            st.subheader("📜 Institutional Audit Trail & Compliance Records")
-            st.write("Complete secured history of all user requests, allocations, and safety proofs.")
-            if not manager_df.empty:
-                st.dataframe(manager_df, use_container_width=True)
-            else:
-                st.info("No audit logs available.")
-                
-    elif password != "":
-        st.error("❌ Incorrect Password!")
-    else:
-        st.info("Please enter the administrator password.")
