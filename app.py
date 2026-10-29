@@ -288,7 +288,7 @@ if role == "Student / Researcher Portal":
         if not my_reqs.empty:
             st.dataframe(my_reqs, use_container_width=True)
     else:
-        st.warning("🔒 Please verify your Student Roll No / ID above to access the booking dashboard.")
+        st.warning("🔒 Please verify your Student Roll No / ID above to access the dashboard.")
 
 else:
     st.subheader("🔒 Lab Manager Secure Control Center")
@@ -378,5 +378,4 @@ else:
                 selected_r_id = st.selectbox("Select Return Request ID to Verify:", return_req_ids, key="ret_sel")
                 
                 if selected_r_id:
-                    ret_row = return_df[return_
-                    ]
+                    ret_row = return_df[return_df["id"]
