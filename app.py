@@ -4,13 +4,21 @@ import os
 import re
 
 CSV_FILE = "requests.csv"
-ADMIN_PASSWORD = "admin"
+ADMIN_PASSWORD = "admin"  # Tum apna password yahan change kar sakti ho
+
+# Official Authorized Skill IDs issued by the institution
+VALID_SKILL_IDS = [
+    "SK-101 (AI Safety & Ethics)", 
+    "SK-102 (Advanced GPU Cluster Safety)", 
+    "SK-103 (Industrial Hardware Handling)", 
+    "SK-104 (Lab Compliance & Protocols)"
+]
 
 def load_data():
     if os.path.exists(CSV_FILE):
         return pd.read_csv(CSV_FILE)
     else:
-        return pd.DataFrame(columns=["id", "user", "equipment", "reason", "skill_id", "status"])
+        return pd.DataFrame(columns=["id", "user", "university", "equipment", "reason", "skill_id", "status"])
 
 def save_data(df):
     df.to_csv(CSV_FILE, index=False)
@@ -29,32 +37,36 @@ if role == "Student / Researcher (User)":
     
     with st.form("booking_form"):
         user_name = st.text_input("Your Name / Roll No:")
+        university = st.text_input("University / Institution Name:")
         equipment = st.selectbox("Select Equipment:", ["NVIDIA RTX 4090 GPU Server", "Industrial 3D Printer (Ultimaker)", "Oscilloscope 100MHz"])
-        reason = st.text_area("Reason / Project Work Details (Minimum 15 characters):")
-        skill_id = st.text_input("Enter Skill Certificate ID (Must start with SK-, e.g., SK-102):")
+        reason = st.text_area("Reason / Project Work Details (Minimum 20 characters):")
+        
+        # Foolproof protection: Select from official authorized Skill IDs only!
+        skill_id = st.selectbox("Select Certified Skill Clearance ID:", VALID_SKILL_IDS)
         
         submitted = st.form_submit_button("🚀 Submit Request")
         
         if submitted:
             clean_name = user_name.strip()
+            clean_uni = university.strip()
             clean_reason = reason.strip()
-            clean_skill = skill_id.strip().upper()
 
             # Strict Validations
             if len(clean_name) < 3 or not re.match("^[a-zA-Z\\s\\.]+$", clean_name):
-                st.error("⚠️ Please enter a valid name (letters only).")
-            elif len(clean_reason) < 15:
-                st.error("⚠️ Reason is too short! Please write a proper project description (at least 15 characters).")
-            elif not clean_skill.startswith("SK-") or len(clean_skill) < 6:
-                st.error("⚠️ Invalid Skill ID! It must start with 'SK-' followed by numbers (e.g., SK-105).")
+                st.error("⚠️ Please enter a valid name (letters and spaces only).")
+            elif len(clean_uni) < 3:
+                st.error("⚠️ Please enter a valid University / Institution name.")
+            elif len(clean_reason) < 20:
+                st.error("⚠️ Reason is too short! Please provide a detailed project description (at least 20 characters).")
             else:
                 new_id = int(df_requests["id"].max() + 1) if not df_requests.empty else 1
                 new_row = pd.DataFrame([{
                     "id": new_id,
                     "user": clean_name,
+                    "university": clean_uni,
                     "equipment": equipment,
                     "reason": clean_reason,
-                    "skill_id": clean_skill,
+                    "skill_id": skill_id,
                     "status": "Pending"
                 }])
                 df_requests = pd.concat([df_requests, new_row], ignore_index=True)
@@ -86,7 +98,7 @@ elif role == "Lab Manager (Owner)":
         if not df_requests.empty:
             st.dataframe(df_requests)
             
-            req_ids = df_requests["id"].tolist()
+            req_ids = df_requests["id"].tolist()ch
             selected_id = st.selectbox("Select Request ID to Update:", req_ids) if req_ids else None
             
             if selected_id:
@@ -94,19 +106,4 @@ elif role == "Lab Manager (Owner)":
                 if st.button("Update Status"):
                     df_requests.loc[df_requests["id"] == selected_id, "status"] = "Approved" if action == "Approve" else "Rejected"
                     save_data(df_requests)
-                    st.success(f"Request #{selected_id} has been {action.lower()}ed!")
-                    st.rerun()
-        else:
-            st.info("No pending requests to review.")
-    elif password != "":
-        st.error("❌ Incorrect Password! Only Lab Managers are authorized.")
-    else:
-        st.info("Please enter the password to access the control panel.")
-
-else:
-    st.subheader("📜 Audit & Compliance Log")
-    st.write("System audit logs and historical tracking.")
-    if not df_requests.empty:
-        st.dataframe(df_requests)
-    else:
-        st.info("No logs available.")
+                    st.success(f"Request #{selected_id} has been {action
