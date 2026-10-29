@@ -378,4 +378,4 @@ else:
                 selected_r_id = st.selectbox("Select Return Request ID to Verify:", return_req_ids, key="ret_sel")
                 
                 if selected_r_id:
-                    ret_row = return_df[return]
+                    # Clean assignment to preve
