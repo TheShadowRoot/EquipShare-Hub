@@ -138,18 +138,17 @@ if role == "Student / Researcher Portal":
                 status = row["status"]
                 eq = row["equipment"]
                 req_id = row["id"]
-                proof = row.get("proof_filename", "None")
+                proof = str(row.get("proof_filename", "")).strip().replace("\\", "/")
                 deadline = row.get("return_deadline", "N/A")
                 
                 if status in ["Approved", "Handed Over"]:
                     st.markdown(f"""
                         <div class="status-approved">
                             <b>✅ Request #{req_id} - Active Allocation</b><br>
-                            Equipment: <b>{eq}</b> | <b>Return Deadline: {deadline}</b><br>
-                            Handover Record: <i>{proof}</i>
+                            Equipment: <b>{eq}</b> | <b>Return Deadline: {deadline}</b>
                         </div>
                     """, unsafe_allow_html=True)
-                    if proof.startswith("uploads/") and os.path.exists(proof):
+                    if proof and os.path.exists(proof):
                         st.image(proof, caption=f"Handover Proof for Request #{req_id}", width=300)
                 elif status == "Return Requested":
                     st.markdown(f"""
@@ -158,6 +157,8 @@ if role == "Student / Researcher Portal":
                             You have submitted your return proof for <b>{eq}</b>. Awaiting Lab Manager approval.
                         </div>
                     """, unsafe_allow_html=True)
+                    if proof and os.path.exists(proof):
+                        st.image(proof, caption=f"Your Return Proof for Request #{req_id}", width=300)
                 elif status == "Returned":
                     st.markdown(f"""
                         <div class="status-approved">
@@ -165,6 +166,8 @@ if role == "Student / Researcher Portal":
                             Equipment <b>{eq}</b> return has been verified and approved by the manager.
                         </div>
                     """, unsafe_allow_html=True)
+                    if proof and os.path.exists(proof):
+                        st.image(proof, caption=f"Verified Return Proof for Request #{req_id}", width=300)
                 elif status == "Rejected":
                     st.markdown(f"""
                         <div class="status-rejected">
@@ -188,14 +191,13 @@ if role == "Student / Researcher Portal":
             st.subheader("🔄 Return Allocated Equipment")
             return_req_id = st.selectbox("Select Active Request ID to Return:", active_handovers["id"].tolist())
             
-            # MANDATORY PROOF UPLOAD CHECK
             return_proof_file = st.file_uploader("Upload Mandatory Return Condition Proof (Photo/Video required):", type=["png", "jpg", "jpeg", "mp4"], key="student_return_proof")
             
             if st.button("📤 Submit Return Request with Proof"):
                 if return_proof_file is None:
                     st.error("⚠️ Mandatory Error: You cannot submit a return request without uploading condition proof (photo/video)!")
                 else:
-                    r_proof_path = os.path.join(UPLOAD_DIR, return_proof_file.name)
+                    r_proof_path = os.path.join(UPLOAD_DIR, return_proof_file.name).replace("\\", "/")
                     with open(r_proof_path, "wb") as f:
                         f.write(return_proof_file.getbuffer())
                     
@@ -290,7 +292,7 @@ else:
                     if st.button("Confirm Approval/Rejection"):
                         p_path = "No Proof Uploaded"
                         if manager_proof is not None:
-                            p_path = os.path.join(UPLOAD_DIR, manager_proof.name)
+                            p_path = os.path.join(UPLOAD_DIR, manager_proof.name).replace("\\", "/")
                             with open(p_path, "wb") as f:
                                 f.write(manager_proof.getbuffer())
                         
@@ -329,11 +331,11 @@ else:
                     ret_row = return_df[return_df["id"] == selected_r_id].iloc[0]
                     st.write(f"**Student:** {ret_row['user']} | **Equipment:** {ret_row['equipment']}")
                     
-                    proof_file_path = ret_row['proof_filename']
-                    if proof_file_path.startswith("uploads/") and os.path.exists(proof_file_path):
+                    proof_file_path = str(ret_row['proof_filename']).strip().replace("\\", "/")
+                    if proof_file_path and os.path.exists(proof_file_path):
                         st.image(proof_file_path, caption=f"Student's Mandatory Return Proof for Request #{selected_r_id}", width=350)
                     else:
-                        st.warning("⚠️ Warning: No valid proof file found uploaded by student!")
+                        st.warning(f"⚠️ Warning: No valid proof file found at path '{proof_file_path}'!")
                     
                     ret_action = st.radio("Manager Return Action:", ["Approve Return & Restore Stock", "Reject Return (Issue with condition)"], key="ret_act")
                     
