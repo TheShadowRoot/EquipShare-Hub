@@ -378,4 +378,43 @@ else:
                 selected_r_id = st.selectbox("Select Return Request ID to Verify:", return_req_ids, key="ret_sel")
                 
                 if selected_r_id:
-                    # Clean assignment to preve
+                    # Clean assignment to prevent syntax truncation
+                    selected_ret_row = return_df[return_df["id"] == selected_r_id].iloc[0]
+                    st.write(f"**Student:** {selected_ret_row['user']} | **Equipment:** {selected_ret_row['equipment']} | **Delivery Type:** {selected_ret_row['shipping_info']}")
+                    
+                    proof_file_path = str(selected_ret_row['proof_filename']).strip().replace("\\", "/")
+                    if proof_file_path and proof_file_path != "No Proof Uploaded" and os.path.exists(proof_file_path):
+                        st.image(proof_file_path, caption=f"Student's Mandatory Return Proof for Request #{selected_r_id}", width=350)
+                    else:
+                        st.warning(f"⚠️ Warning: No valid proof file found at path '{proof_file_path}'!")
+                    
+                    ret_action = st.radio("Manager Return Action:", ["Approve Return & Restore Stock", "Reject Return (Issue with condition)"], key="ret_act")
+                    
+                    if st.button("Confirm Return Decision"):
+                        fresh_df = load_data()
+                        if "Approve" in ret_action:
+                            fresh_df.loc[fresh_df["id"] == selected_r_id, "status"] = "Returned"
+                            save_data(fresh_df)
+                            st.success(f"Return for Request #{selected_r_id} approved successfully! Stock restored.")
+                            st.rerun()
+                        else:
+                            fresh_df.loc[fresh_df["id"] == selected_r_id, "status"] = "Handed Over"
+                            fresh_df.loc[fresh_df["id"] == selected_r_id, "proof_filename"] = f"Return Rejected: Resubmit Proof"
+                            save_data(fresh_df)
+                            st.warning(f"Return request #{selected_r_id} rejected. Student will need to resubmit valid proof.")
+                            st.rerun()
+            else:
+                st.info("No pending equipment return requests from students.")
+
+        with audit_tab:
+            st.subheader("📜 Institutional Audit Trail & Compliance Records")
+            st.write("Complete secured history of all user requests, allocations, and safety proofs.")
+            if not manager_df.empty:
+                st.dataframe(manager_df, use_container_width=True)
+            else:
+                st.info("No audit logs available.")
+                
+    elif password != "":
+        st.error("❌ Incorrect Password!")
+    else:
+        st.info("Please enter the administrator password.")
