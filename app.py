@@ -8,7 +8,6 @@ CSV_FILE = "requests.csv"
 UPLOAD_DIR = "uploads"
 ADMIN_PASSWORD = "admin"
 
-# Ensure uploads directory exists
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 EQUIPMENT_STOCK = {
@@ -150,7 +149,6 @@ if role == "Student / Researcher Portal":
                             Handover Record: <i>{proof}</i>
                         </div>
                     """, unsafe_allow_html=True)
-                    # Show image preview if proof file exists in uploads folder
                     if proof.startswith("uploads/") and os.path.exists(proof):
                         st.image(proof, caption=f"Handover Proof for Request #{req_id}", width=300)
                 elif status == "Return Requested":
@@ -190,21 +188,23 @@ if role == "Student / Researcher Portal":
             st.subheader("🔄 Return Allocated Equipment")
             return_req_id = st.selectbox("Select Active Request ID to Return:", active_handovers["id"].tolist())
             
-            return_proof_file = st.file_uploader("Upload Return Condition Proof (Photo/Video of equipment):", type=["png", "jpg", "jpeg", "mp4"], key="student_return_proof")
+            # MANDATORY PROOF UPLOAD CHECK
+            return_proof_file = st.file_uploader("Upload Mandatory Return Condition Proof (Photo/Video required):", type=["png", "jpg", "jpeg", "mp4"], key="student_return_proof")
             
             if st.button("📤 Submit Return Request with Proof"):
-                r_proof_path = "No Proof Uploaded"
-                if return_proof_file is not None:
+                if return_proof_file is None:
+                    st.error("⚠️ Mandatory Error: You cannot submit a return request without uploading condition proof (photo/video)!")
+                else:
                     r_proof_path = os.path.join(UPLOAD_DIR, return_proof_file.name)
                     with open(r_proof_path, "wb") as f:
                         f.write(return_proof_file.getbuffer())
-                
-                fresh_df = load_data()
-                fresh_df.loc[fresh_df["id"] == return_req_id, "status"] = "Return Requested"
-                fresh_df.loc[fresh_df["id"] == return_req_id, "proof_filename"] = r_proof_path
-                save_data(fresh_df)
-                st.success(f"✅ Return request submitted with proof for item #{return_req_id}! Awaiting Lab Manager approval.")
-                st.rerun()
+                    
+                    fresh_df = load_data()
+                    fresh_df.loc[fresh_df["id"] == return_req_id, "status"] = "Return Requested"
+                    fresh_df.loc[fresh_df["id"] == return_req_id, "proof_filename"] = r_proof_path
+                    save_data(fresh_df)
+                    st.success(f"✅ Return request submitted with mandatory proof for item #{return_req_id}! Awaiting Lab Manager approval.")
+                    st.rerun()
 
         st.markdown("---")
         st.subheader("📝 Submit New Equipment Booking Request")
@@ -329,12 +329,11 @@ else:
                     ret_row = return_df[return_df["id"] == selected_r_id].iloc[0]
                     st.write(f"**Student:** {ret_row['user']} | **Equipment:** {ret_row['equipment']}")
                     
-                    # Show student's uploaded proof image if it exists
                     proof_file_path = ret_row['proof_filename']
                     if proof_file_path.startswith("uploads/") and os.path.exists(proof_file_path):
-                        st.image(proof_file_path, caption=f"Student's Return Proof for Request #{selected_r_id}", width=350)
+                        st.image(proof_file_path, caption=f"Student's Mandatory Return Proof for Request #{selected_r_id}", width=350)
                     else:
-                        st.write(f"**Proof File Path/Info:** {proof_file_path}")
+                        st.warning("⚠️ Warning: No valid proof file found uploaded by student!")
                     
                     ret_action = st.radio("Manager Return Action:", ["Approve Return & Restore Stock", "Reject Return (Issue with condition)"], key="ret_act")
                     
