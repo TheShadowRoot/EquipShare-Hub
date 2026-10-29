@@ -149,8 +149,8 @@ if role == "Student / Researcher Portal":
                             Equipment: <b>{eq}</b> | <b>Return Deadline: {deadline}</b>
                         </div>
                     """, unsafe_allow_html=True)
-                    if proof and os.path.exists(proof):
-                        st.image(proof, caption=f"Handover Proof for Request #{req_id}", width=300)
+                    if proof and proof != "No Proof Uploaded" and os.path.exists(proof):
+                        st.image(proof, caption=f"Manager Handover Proof for Request #{req_id}", width=300)
                 elif status == "Dispatched via Courier":
                     st.markdown(f"""
                         <div class="status-approved">
@@ -159,6 +159,8 @@ if role == "Student / Researcher Portal":
                             <b>Return Deadline: {deadline}</b>
                         </div>
                     """, unsafe_allow_html=True)
+                    if proof and proof != "No Proof Uploaded" and os.path.exists(proof):
+                        st.image(proof, caption=f"Manager Dispatch Proof for Request #{req_id}", width=300)
                 elif status == "Return Requested":
                     st.markdown(f"""
                         <div class="status-pending">
@@ -166,7 +168,7 @@ if role == "Student / Researcher Portal":
                             You have submitted your return proof for <b>{eq}</b>. Awaiting Lab Manager approval.
                         </div>
                     """, unsafe_allow_html=True)
-                    if proof and os.path.exists(proof):
+                    if proof and proof != "No Proof Uploaded" and os.path.exists(proof):
                         st.image(proof, caption=f"Your Return Proof for Request #{req_id}", width=300)
                 elif status == "Returned":
                     st.markdown(f"""
@@ -328,7 +330,7 @@ else:
                             elif len(courier_tracking.strip()) < 3:
                                 st.error("⚠️ Please enter a valid Courier Name & Tracking ID!")
                             else:
-                                due_date = (datetime.now() + timedelta(days=10)).strftime("%Y-%m-%d") # 10 days for remote delivery
+                                due_date = (datetime.now() + timedelta(days=10)).strftime("%Y-%m-%d")
                                 fresh_df.loc[fresh_df["id"] == selected_p_id, "status"] = "Dispatched via Courier"
                                 fresh_df.loc[fresh_df["id"] == selected_p_id, "return_deadline"] = due_date
                                 fresh_df.loc[fresh_df["id"] == selected_p_id, "proof_filename"] = p_path
@@ -361,12 +363,7 @@ else:
                     st.write(f"**Student:** {ret_row['user']} | **Equipment:** {ret_row['equipment']} | **Delivery Type:** {ret_row['shipping_info']}")
                     
                     proof_file_path = str(ret_row['proof_filename']).strip().replace("\\", "/")
-                    if proof_file_path and os.path.exists(proof_file_path):
+                    if proof_file_path and proof_file_path != "No Proof Uploaded" and os.path.exists(proof_file_path):
                         st.image(proof_file_path, caption=f"Student's Mandatory Return Proof for Request #{selected_r_id}", width=350)
                     else:
                         st.warning(f"⚠️ Warning: No valid proof file found at path '{proof_file_path}'!")
-                    
-                    ret_action = st.radio("Manager Return Action:", ["Approve Return & Restore Stock", "Reject Return (Issue with condition)"], key="ret_act")
-                    
-                    if st.button("Confirm Return Decision"):
-                        fresh_df = load_data()
