@@ -52,13 +52,14 @@ st.markdown("---")
 
 role = st.sidebar.radio("Select Portal Access:", ["Student / Researcher Portal", "Lab Manager (Owner)", "Audit & Compliance Log"])
 
+# Always load fresh data from CSV to ensure real-time sync without manual browser refresh
 df_requests = load_data()
 
 def get_available_stock():
     stock = EQUIPMENT_STOCK.copy()
-    if not df_requests.empty:
-        # Stock reduces only when equipment is handed over, returns increase stock back
-        approved_df = df_requests[df_requests["status"].isin(["Approved", "Handed Over"])]
+    current_df = load_data()
+    if not current_df.empty:
+        approved_df = current_df[current_df["status"].isin(["Approved", "Handed Over"])]
         for eq in approved_df["equipment"]:
             if eq in stock and stock[eq] > 0:
                 stock[eq] -= 1
@@ -67,29 +68,38 @@ def get_available_stock():
 if role == "Student / Researcher Portal":
     st.subheader("🎓 Student Authentication & Verification")
     
-    with st.expander("🔐 Student Login (Required to Access Portal)", expanded="authenticated_student" not in st.session_state):
-        student_id_input = st.text_input("Enter Official Roll No / Student ID:", placeholder="e.g., 2026/AIML/01 or BTECH1024")
-        student_name_input = st.text_input("Your Full Name:")
-        login_clicked = st.button("Verify & Open Student Dashboard")
+    # Persistent login check: If already logged in, do not ask for login again
+    if "authenticated_student" not in st.session_state:
+        with st.expander("🔐 Student Login (Required to Access Portal)", expanded=True):
+            student_id_input = st.text_input("Enter Official Roll No / Student ID:", placeholder="e.g., 2026/AIML/01 or BTECH1024")
+            student_name_input = st.text_input("Your Full Name:")
+            login_clicked = st.button("Verify & Open Student Dashboard")
 
-    if login_clicked:
-        clean_sid = student_id_input.strip()
-        clean_sname = student_name_input.strip()
-        
-        if len(clean_sid) < 3:
-            st.error("⚠️ Please enter a valid University Roll No or Student ID.")
-        elif len(clean_sname) < 3 or not re.match("^[a-zA-Z\\s\\.]+$", clean_sname):
-            st.error("⚠️ Please enter a valid full name (letters only).")
-        else:
-            st.session_state["authenticated_student"] = clean_sid
-            st.session_state["student_name"] = clean_sname
-            st.success(f"✅ Welcome, {clean_sname} (ID: {clean_sid})!")
+        if login_clicked:
+            clean_sid = student_id_input.strip()
+            clean_sname = student_name_input.strip()
+            
+            if len(clean_sid) < 3:
+                st.error("⚠️ Please enter a valid University Roll No or Student ID.")
+            elif len(clean_sname) < 3 or not re.match("^[a-zA-Z\\s\\.]+$", clean_sname):
+                st.error("⚠️ Please enter a valid full name (letters only).")
+            else:
+                st.session_state["authenticated_student"] = clean_sid
+                st.session_state["student_name"] = clean_sname
+                st.success(f"✅ Welcome, {clean_sname} (ID: {clean_sid})!")
+                st.rerun()
 
     if "authenticated_student" in st.session_state:
-        st.markdown("---")
         current_student_id = st.session_state["authenticated_student"]
         current_student_name = st.session_state["student_name"]
+        
+        # Logout option if needed
+        if st.sidebar.button("🚪 Logout Student"):
+            del st.session_state["authenticated_student"]
+            del st.session_state["student_name"]
+            st.rerun()
 
+        st.markdown("---")
         st.subheader("📊 Live Equipment Availability & Stock")
         current_stock = get_available_stock()
         cols = st.columns(len(current_stock))
@@ -105,7 +115,8 @@ if role == "Student / Researcher Portal":
 
         st.markdown("---")
         st.subheader("🔔 Live Notification & Request Status")
-        my_reqs = df_requests[df_requests["student_id"] == current_student_id] if not df_requests.empty else pd.DataFrame()
+        latest_df = load_data()
+        my_reqs = latest_df[latest_df["student_id"] == current_student_id] if not latest_df.empty else pd.DataFrame()
 
         if not my_reqs.empty:
             for idx, row in my_reqs.iterrows():
@@ -173,7 +184,8 @@ if role == "Student / Researcher Portal":
                 elif len(max(words, key=len)) > 20:
                     st.error("⚠️ Meaningless junk text detected in reason!")
                 else:
-                    new_id = int(df_requests["id"].max() + 1) if not df_requests.empty else 1
+                    live_df = load_data()
+                    new_id = int(live_df["id"].max() + 1) if not live_df.empty else 1
                     new_row = pd.DataFrame([{
                         "id": new_id,
                         "user": current_student_name,
@@ -185,8 +197,8 @@ if role == "Student / Researcher Portal":
                         "proof_filename": "Awaiting Handover",
                         "status": "Pending"
                     }])
-                    df_requests = pd.concat([df_requests, new_row], ignore_index=True)
-                    save_data(df_requests)
+                    updated_df = pd.concat([live_df, new_row], ignore_index=True)
+                    save_data(updated_df)
                     st.success("✅ Booking request submitted successfully! Status updated above.")
                     st.rerun()
 
@@ -202,8 +214,10 @@ elif role == "Lab Manager (Owner)":
     
     if password == ADMIN_PASSWORD:
         st.success("🔓 Access Granted!")
-        st.write("Review requests, manage stock, and upload condition proofs during equipment Hand-Over or Return.")
+        st.write("Review incoming requests instantly, manage stock, and upload condition proofs.")
         
+        # Always fetch latest data for manager so new requests show up instantly
+        manager_df = load_data()
         current_stock = get_available_stock()
         
         st.markdown("---")
@@ -213,43 +227,42 @@ elif role == "Lab Manager (Owner)":
 
         st.markdown("---")
         st.subheader("📋 Pending & Active System Requests")
-        if not df_requests.empty:
-            st.dataframe(df_requests, use_container_width=True)
+        if not manager_df.empty:
+            st.dataframe(manager_df, use_container_width=True)
             
-            req_ids = df_requests["id"].tolist()
+            req_ids = manager_df["id"].tolist()
             selected_id = st.selectbox("Select Request ID to Manage:", req_ids) if req_ids else None
             
             if selected_id:
-                selected_row = df_requests[df_requests["id"] == selected_id].iloc[0]
+                selected_row = manager_df[manager_df["id"] == selected_id].iloc[0]
                 st.write(f"**Selected Request:** Student: {selected_row['user']} | Equipment: {selected_row['equipment']} | Status: {selected_row['status']}")
                 
                 action = st.selectbox("Select Action / Status Update:", ["Approve & Hand Over (Upload Proof)", "Reject", "Mark as Returned & Verify Condition"])
-                
-                # Actual file uploader for handover or return proof
                 uploaded_proof = st.file_uploader("Upload Condition Photo/Video Proof (Handover / Return):", type=["png", "jpg", "jpeg", "mp4"])
                 
                 if st.button("Confirm Status & Save Proof"):
                     proof_name = uploaded_proof.name if uploaded_proof is not None else "No File Uploaded"
+                    latest_fresh_df = load_data()
                     
                     if "Approve" in action:
                         if current_stock.get(selected_row['equipment'], 0) <= 0:
                             st.error("Cannot approve! Equipment is out of stock.")
                         else:
-                            df_requests.loc[df_requests["id"] == selected_id, "status"] = "Handed Over"
-                            df_requests.loc[df_requests["id"] == selected_id, "proof_filename"] = f"Handover: {proof_name}"
-                            save_data(df_requests)
+                            latest_fresh_df.loc[latest_fresh_df["id"] == selected_id, "status"] = "Handed Over"
+                            latest_fresh_df.loc[latest_fresh_df["id"] == selected_id, "proof_filename"] = f"Handover: {proof_name}"
+                            save_data(latest_fresh_df)
                             st.success(f"Request #{selected_id} approved and marked as Handed Over with proof!")
                             st.rerun()
                     elif "Reject" in action:
-                        df_requests.loc[df_requests["id"] == selected_id, "status"] = "Rejected"
-                        df_requests.loc[df_requests["id"] == selected_id, "proof_filename"] = "Rejected"
-                        save_data(df_requests)
+                        latest_fresh_df.loc[latest_fresh_df["id"] == selected_id, "status"] = "Rejected"
+                        latest_fresh_df.loc[latest_fresh_df["id"] == selected_id, "proof_filename"] = "Rejected"
+                        save_data(latest_fresh_df)
                         st.success(f"Request #{selected_id} has been rejected.")
                         st.rerun()
                     elif "Returned" in action:
-                        df_requests.loc[df_requests["id"] == selected_id, "status"] = "Returned"
-                        df_requests.loc[df_requests["id"] == selected_id, "proof_filename"] = f"Return Verified: {proof_name}"
-                        save_data(df_requests)
+                        latest_fresh_df.loc[latest_fresh_df["id"] == selected_id, "status"] = "Returned"
+                        latest_fresh_df.loc[latest_fresh_df["id"] == selected_id, "proof_filename"] = f"Return Verified: {proof_name}"
+                        save_data(latest_fresh_df)
                         st.success(f"Equipment for Request #{selected_id} marked as Returned safely with condition proof!")
                         st.rerun()
         else:
@@ -261,8 +274,9 @@ elif role == "Lab Manager (Owner)":
 
 else:
     st.subheader("📜 Audit & Compliance Log")
+    audit_df = load_data()
     st.write("Complete institutional audit trail, stock logs, and return safety proofs.")
-    if not df_requests.empty:
-        st.dataframe(df_requests, use_container_width=True)
+    if not audit_df.empty:
+        st.dataframe(audit_df, use_container_width=True)
     else:
         st.info("No audit logs available.")
