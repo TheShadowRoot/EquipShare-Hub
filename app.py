@@ -41,7 +41,6 @@ def save_data(df):
 
 st.set_page_config(page_title="EquipShare Hub", page_icon="⚙️", layout="wide")
 
-# Complete CSS to hide Streamlit Header, Menu, Footer and Fork Button permanently
 st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
@@ -151,14 +150,14 @@ if role == "Student / Researcher Portal":
                     st.markdown(f"""
                         <div class="status-pending">
                             <b>📦 Request #{req_id} - Return Verification Pending</b><br>
-                            You have initiated the return for <b>{eq}</b>. Awaiting Lab Manager confirmation.
+                            You have submitted your return proof for <b>{eq}</b>. Awaiting Lab Manager approval.
                         </div>
                     """, unsafe_allow_html=True)
                 elif status == "Returned":
                     st.markdown(f"""
                         <div class="status-approved">
                             <b>📦 Request #{req_id} - RETURNED SAFELY & CLOSED</b><br>
-                            Equipment <b>{eq}</b> return has been verified and logged successfully.
+                            Equipment <b>{eq}</b> return has been verified and approved by the manager.
                         </div>
                     """, unsafe_allow_html=True)
                 elif status == "Rejected":
@@ -183,15 +182,17 @@ if role == "Student / Researcher Portal":
             st.markdown("---")
             st.subheader("🔄 Return Allocated Equipment")
             return_req_id = st.selectbox("Select Active Request ID to Return:", active_handovers["id"].tolist())
-            return_proof_file = st.file_uploader("Upload Return Condition Proof (Photo/Video of equipment state):", type=["png", "jpg", "jpeg", "mp4"], key="student_return_proof")
             
-            if st.button("📤 Submit Return Request to Lab Manager"):
+            # Student uploads proof when requesting return
+            return_proof_file = st.file_uploader("Upload Return Condition Proof (Photo/Video of equipment):", type=["png", "jpg", "jpeg", "mp4"], key="student_return_proof")
+            
+            if st.button("📤 Submit Return Request with Proof"):
                 r_proof_name = return_proof_file.name if return_proof_file is not None else "No Proof Uploaded"
                 fresh_df = load_data()
                 fresh_df.loc[fresh_df["id"] == return_req_id, "status"] = "Return Requested"
                 fresh_df.loc[fresh_df["id"] == return_req_id, "proof_filename"] = f"Return Proof: {r_proof_name}"
                 save_data(fresh_df)
-                st.success(f"✅ Return request submitted for item #{return_req_id}! Lab Manager will verify and close it.")
+                st.success(f"✅ Return request submitted with proof for item #{return_req_id}! Awaiting Lab Manager approval.")
                 st.rerun()
 
         st.markdown("---")
@@ -311,18 +312,25 @@ else:
                 
                 if selected_r_id:
                     ret_row = return_df[return_df["id"] == selected_r_id].iloc[0]
-                    st.write(f"**Student:** {ret_row['user']} | **Equipment:** {ret_row['equipment']} | **Return Proof File:** {ret_row['proof_filename']}")
+                    st.write(f"**Student:** {ret_row['user']} | **Equipment:** {ret_row['equipment']} | **Student's Return Proof:** {ret_row['proof_filename']}")
                     
-                    ret_proof = st.file_uploader("Upload Final Condition Check Proof (Optional):", type=["png", "jpg", "jpeg", "mp4"], key="r_proof")
+                    # Manager can approve or reject the student's return request
+                    ret_action = st.radio("Manager Return Action:", ["Approve Return & Restore Stock", "Reject Return (Issue with condition)"], key="ret_act")
                     
-                    if st.button("✅ Verify Return & Restore Stock"):
-                        rp_name = ret_proof.name if ret_proof is not None else ret_row['proof_filename']
+                    if st.button("Confirm Return Decision"):
                         fresh_df = load_data()
-                        fresh_df.loc[fresh_df["id"] == selected_r_id, "status"] = "Returned"
-                        fresh_df.loc[fresh_df["id"] == selected_r_id, "proof_filename"] = f"Verified Return: {rp_name}"
-                        save_data(fresh_df)
-                        st.success(f"Equipment for Request #{selected_r_id} verified and marked as Returned Safely! Stock restored.")
-                        st.rerun()
+                        if "Approve" in ret_action:
+                            fresh_df.loc[fresh_df["id"] == selected_r_id, "status"] = "Returned"
+                            fresh_df.loc[fresh_df["id"] == selected_r_id, "proof_filename"] = f"Approved Return: {ret_row['proof_filename']}"
+                            save_data(fresh_df)
+                            st.success(f"Return for Request #{selected_r_id} approved successfully! Stock restored.")
+                            st.rerun()
+                        else:
+                            fresh_df.loc[fresh_df["id"] == selected_r_id, "status"] = "Handed Over" # Sent back to active if rejected
+                            fresh_df.loc[fresh_df["id"] == selected_r_id, "proof_filename"] = f"Return Rejected: Resubmit Proof"
+                            save_data(fresh_df)
+                            st.warning(f"Return request #{selected_r_id} rejected. Student will need to resubmit valid proof.")
+                            st.rerun()
             else:
                 st.info("No pending equipment return requests from students.")
 
