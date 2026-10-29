@@ -23,7 +23,6 @@ VALID_SKILL_IDS = [
 def load_data():
     if os.path.exists(CSV_FILE):
         df = pd.read_csv(CSV_FILE)
-        # Ensure all text columns are treated as string to prevent LossySetItemError
         text_cols = ["user", "student_id", "university", "equipment", "reason", "skill_id", "proof_filename", "return_deadline", "status"]
         for col in text_cols:
             if col not in df.columns:
@@ -75,7 +74,7 @@ def get_available_stock():
     return stock
 
 if role == "Student / Researcher Portal":
-    st.subheader("🎓 Student Authentication & Verification")
+    st.subheader("🎓 Student Authentication & Dashboard")
     
     if "authenticated_student" not in st.session_state:
         with st.expander("🔐 Student Login (Required to Access Portal)", expanded=True):
@@ -185,7 +184,7 @@ if role == "Student / Researcher Portal":
                 fresh_df.loc[fresh_df["id"] == return_req_id, "status"] = "Return Requested"
                 fresh_df.loc[fresh_df["id"] == return_req_id, "proof_filename"] = f"Return Proof: {r_proof_name}"
                 save_data(fresh_df)
-                st.success(f"✅ Return request submitted for item #{return_req_id}! Please hand over the physical equipment to the lab manager.")
+                st.success(f"✅ Return request submitted for item #{return_req_id}! Lab Manager will verify and close it.")
                 st.rerun()
 
         st.markdown("---")
@@ -248,73 +247,82 @@ else:
     if password == ADMIN_PASSWORD:
         st.success("🔓 Access Granted!")
         
-        mgr_tab, audit_tab = st.tabs(["⚡ Request Management & Stock", "📜 Audit & Compliance Log"])
+        # Organized tabs for Manager: New Requests, Active/Return Requests, and Audit Logs
+        req_tab, return_tab, audit_tab = st.tabs(["⚡ Pending Requests", "🔄 Return Requests Queue", "📜 Audit & Compliance Log"])
         
         manager_df = load_data()
         current_stock = get_available_stock()
         
-        with mgr_tab:
-            st.write("Review incoming requests, track return deadlines, and verify condition proofs.")
+        with req_tab:
+            st.subheader("📥 New Student Booking Requests")
+            pending_df = manager_df[manager_df["status"] == "Pending"] if not manager_df.empty else pd.DataFrame()
             
-            st.markdown("---")
-            st.subheader("📊 Current Live Stock Status")
-            for eq_name, qty in current_stock.items():
-                st.write(f"- **{eq_name}**: `{qty}` available out of `{EQUIPMENT_STOCK[eq_name]}` total units.")
-
-            st.markdown("---")
-            st.subheader("📋 Pending & Active System Requests")
-            if not manager_df.empty:
-                st.dataframe(manager_df, use_container_width=True)
+            if not pending_df.empty:
+                st.dataframe(pending_df, use_container_width=True)
+                req_ids = pending_df["id"].tolist()
+                selected_p_id = st.selectbox("Select Pending Request ID to Approve/Reject:", req_ids, key="pend_sel")
                 
-                req_ids = manager_df["id"].tolist()
-                selected_id = st.selectbox("Select Request ID to Manage:", req_ids) if req_ids else None
-                
-                if selected_id:
-                    selected_row = manager_df[manager_df["id"] == selected_id].iloc[0]
-                    st.write(f"**Selected Request:** Student: {selected_row['user']} | Equipment: {selected_row['equipment']} | Current Status: {selected_row['status']}")
+                if selected_p_id:
+                    sel_row = pending_df[pending_df["id"] == selected_p_id].iloc[0]
+                    st.write(f"**Student:** {sel_row['user']} | **Equipment:** {sel_row['equipment']} | **Reason:** {sel_row['reason']}")
                     
-                    action = st.selectbox("Select Action / Status Update:", [
-                        "Approve & Hand Over (Set 7 Days Deadline)", 
-                        "Reject Request", 
-                        "Verify Return & Close Request (Safe Return)"
-                    ])
+                    p_action = st.radio("Action:", ["Approve & Hand Over", "Reject Request"], key="p_act")
+                    manager_proof = st.file_uploader("Upload Handover Proof (Optional):", type=["png", "jpg", "jpeg", "mp4"], key="p_proof")
                     
-                    manager_proof = st.file_uploader("Upload Verification Proof File (Optional):", type=["png", "jpg", "jpeg", "mp4"])
-                    
-                    if st.button("Confirm Manager Action"):
-                        p_name = manager_proof.name if manager_proof is not None else str(selected_row.get("proof_filename", "No Proof"))
+                    if st.button("Confirm Approval/Rejection"):
+                        p_name = manager_proof.name if manager_proof is not None else "No Proof Uploaded"
                         fresh_df = load_data()
                         
-                        if "Approve" in action:
-                            if current_stock.get(selected_row['equipment'], 0) <= 0:
+                        if "Approve" in p_action:
+                            if current_stock.get(sel_row['equipment'], 0) <= 0:
                                 st.error("Cannot approve! Equipment is out of stock.")
                             else:
                                 due_date = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
-                                fresh_df.loc[fresh_df["id"] == selected_id, "status"] = "Handed Over"
-                                fresh_df.loc[fresh_df["id"] == selected_id, "return_deadline"] = due_date
-                                fresh_df.loc[fresh_df["id"] == selected_id, "proof_filename"] = f"Handover Proof: {p_name}"
+                                fresh_df.loc[fresh_df["id"] == selected_p_id, "status"] = "Handed Over"
+                                fresh_df.loc[fresh_df["id"] == selected_p_id, "return_deadline"] = due_date
+                                fresh_df.loc[fresh_df["id"] == selected_p_id, "proof_filename"] = f"Handover Proof: {p_name}"
                                 save_data(fresh_df)
-                                st.success(f"Request #{selected_id} approved! Handed over with 7-day return deadline ({due_date}).")
+                                st.success(f"Request #{selected_p_id} approved! 7-day return deadline set ({due_date}).")
                                 st.rerun()
-                        elif "Reject" in action:
-                            fresh_df.loc[fresh_df["id"] == selected_id, "status"] = "Rejected"
-                            fresh_df.loc[fresh_df["id"] == selected_id, "return_deadline"] = "N/A"
-                            fresh_df.loc[fresh_df["id"] == selected_id, "proof_filename"] = "Rejected"
+                        else:
+                            fresh_df.loc[fresh_df["id"] == selected_p_id, "status"] = "Rejected"
+                            fresh_df.loc[fresh_df["id"] == selected_p_id, "return_deadline"] = "N/A"
+                            fresh_df.loc[fresh_df["id"] == selected_p_id, "proof_filename"] = "Rejected"
                             save_data(fresh_df)
-                            st.success(f"Request #{selected_id} has been rejected.")
-                            st.rerun()
-                        elif "Verify Return" in action:
-                            fresh_df.loc[fresh_df["id"] == selected_id, "status"] = "Returned"
-                            fresh_df.loc[fresh_df["id"] == selected_id, "proof_filename"] = f"Verified Return: {p_name}"
-                            save_data(fresh_df)
-                            st.success(f"Equipment for Request #{selected_id} verified and marked as Returned Safely! Stock restored.")
+                            st.success(f"Request #{selected_p_id} rejected.")
                             st.rerun()
             else:
-                st.info("No requests to review.")
+                st.info("No pending booking requests right now.")
+
+        with return_tab:
+            st.subheader("🔄 Student Equipment Return Queue")
+            return_df = manager_df[manager_df["status"] == "Return Requested"] if not manager_df.empty else pd.DataFrame()
+            
+            if not return_df.empty:
+                st.dataframe(return_df, use_container_width=True)
+                return_req_ids = return_df["id"].tolist()
+                selected_r_id = st.selectbox("Select Return Request ID to Verify:", return_req_ids, key="ret_sel")
                 
+                if selected_r_id:
+                    ret_row = return_df[return_df["id"] == selected_r_id].iloc[0]
+                    st.write(f"**Student:** {ret_row['user']} | **Equipment:** {ret_row['equipment']} | **Return Proof File:** {ret_row['proof_filename']}")
+                    
+                    ret_proof = st.file_uploader("Upload Final Condition Check Proof (Optional):", type=["png", "jpg", "jpeg", "mp4"], key="r_proof")
+                    
+                    if st.button("✅ Verify Return & Restore Stock"):
+                        rp_name = ret_proof.name if ret_proof is not None else ret_row['proof_filename']
+                        fresh_df = load_data()
+                        fresh_df.loc[fresh_df["id"] == selected_r_id, "status"] = "Returned"
+                        fresh_df.loc[fresh_df["id"] == selected_r_id, "proof_filename"] = f"Verified Return: {rp_name}"
+                        save_data(fresh_df)
+                        st.success(f"Equipment for Request #{selected_r_id} verified and marked as Returned Safely! Stock restored.")
+                        st.rerun()
+            else:
+                st.info("No pending equipment return requests from students.")
+
         with audit_tab:
             st.subheader("📜 Institutional Audit Trail & Compliance Records")
-            st.write("Complete secured history of user requests, allocation deadlines, and safety condition proofs.")
+            st.write("Complete secured history of all user requests, allocations, and safety proofs.")
             if not manager_df.empty:
                 st.dataframe(manager_df, use_container_width=True)
             else:
