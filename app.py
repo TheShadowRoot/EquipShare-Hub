@@ -6,7 +6,6 @@ import re
 CSV_FILE = "requests.csv"
 ADMIN_PASSWORD = "admin"
 
-# Equipment Inventory Stock Management
 EQUIPMENT_STOCK = {
     "NVIDIA RTX 4090 GPU Server": 3,
     "Industrial 3D Printer (Ultimaker)": 5,
@@ -24,7 +23,7 @@ def load_data():
     if os.path.exists(CSV_FILE):
         return pd.read_csv(CSV_FILE)
     else:
-        return pd.DataFrame(columns=["id", "user", "student_id", "university", "equipment", "reason", "skill_id", "proof_info", "status"])
+        return pd.DataFrame(columns=["id", "user", "student_id", "university", "equipment", "reason", "skill_id", "proof_filename", "status"])
 
 def save_data(df):
     df.to_csv(CSV_FILE, index=False)
@@ -55,11 +54,11 @@ role = st.sidebar.radio("Select Portal Access:", ["Student / Researcher Portal",
 
 df_requests = load_data()
 
-# Calculate available stock dynamically based on approved requests
 def get_available_stock():
     stock = EQUIPMENT_STOCK.copy()
     if not df_requests.empty:
-        approved_df = df_requests[df_requests["status"] == "Approved"]
+        # Stock reduces only when equipment is handed over, returns increase stock back
+        approved_df = df_requests[df_requests["status"].isin(["Approved", "Handed Over"])]
         for eq in approved_df["equipment"]:
             if eq in stock and stock[eq] > 0:
                 stock[eq] -= 1
@@ -91,7 +90,6 @@ if role == "Student / Researcher Portal":
         current_student_id = st.session_state["authenticated_student"]
         current_student_name = st.session_state["student_name"]
 
-        # LIVE INVENTORY STOCK DISPLAY FOR STUDENTS
         st.subheader("📊 Live Equipment Availability & Stock")
         current_stock = get_available_stock()
         cols = st.columns(len(current_stock))
@@ -106,7 +104,6 @@ if role == "Student / Researcher Portal":
                 """, unsafe_allow_html=True)
 
         st.markdown("---")
-        # LIVE NOTIFICATIONS
         st.subheader("🔔 Live Notification & Request Status")
         my_reqs = df_requests[df_requests["student_id"] == current_student_id] if not df_requests.empty else pd.DataFrame()
 
@@ -115,20 +112,27 @@ if role == "Student / Researcher Portal":
                 status = row["status"]
                 eq = row["equipment"]
                 req_id = row["id"]
-                proof = row.get("proof_info", "No file uploaded")
+                proof = row.get("proof_filename", "None")
                 
-                if status == "Approved":
+                if status in ["Approved", "Handed Over"]:
                     st.markdown(f"""
                         <div class="status-approved">
-                            <b>✅ Request #{req_id} APPROVED!</b><br>
-                            Your booking for <b>{eq}</b> has been approved. Condition Proof Log: <i>{proof}</i>
+                            <b>✅ Request #{req_id} - Status: {status}</b><br>
+                            Your booking for <b>{eq}</b> is active. Safety Proof File: <i>{proof}</i>
+                        </div>
+                    """, unsafe_allow_html=True)
+                elif status == "Returned":
+                    st.markdown(f"""
+                        <div class="status-approved">
+                            <b>📦 Request #{req_id} - RETURNED SAFELY</b><br>
+                            Equipment <b>{eq}</b> has been successfully returned and verified.
                         </div>
                     """, unsafe_allow_html=True)
                 elif status == "Rejected":
                     st.markdown(f"""
                         <div class="status-rejected">
                             <b>❌ Request #{req_id} REJECTED!</b><br>
-                            Your booking for <b>{eq}</b> was declined by the Lab Manager.
+                            Your booking for <b>{eq}</b> was declined by the manager.
                         </div>
                     """, unsafe_allow_html=True)
                 else:
@@ -152,28 +156,22 @@ if role == "Student / Researcher Portal":
             reason = st.text_area("Reason / Project Work Details (Must be meaningful, at least 5 words):")
             skill_id = st.selectbox("Select Certified Skill Clearance ID:", VALID_SKILL_IDS)
             
-            # Condition proof attachment info for pickup/return tracking
-            proof_file_info = st.text_input("Upload/Attach Photo/Video Proof Filename (Handover Condition Check):", placeholder="e.g., condition_check_img_01.jpg")
-            
-            submitted = st.form_submit_button("🚀 Submit Verified Request")
+            submitted = st.form_submit_button("🚀 Submit Request")
             
             if submitted:
                 clean_uni = university.strip()
                 clean_reason = reason.strip()
-                clean_proof = proof_file_info.strip()
                 words = clean_reason.split()
 
                 current_stock = get_available_stock()
                 if current_stock.get(equipment, 0) <= 0:
-                    st.error(f"⚠️ Sorry! '{equipment}' is currently out of stock (All units are allocated/approved).")
+                    st.error(f"⚠️ Sorry! '{equipment}' is currently out of stock.")
                 elif len(clean_uni) < 3:
                     st.error("⚠️ Please enter a valid University / Institution name.")
                 elif len(words) < 5 or len(clean_reason) < 25:
                     st.error("⚠️ Reason is too short! Please provide a proper project description.")
                 elif len(max(words, key=len)) > 20:
                     st.error("⚠️ Meaningless junk text detected in reason!")
-                elif not clean_proof:
-                    st.error("⚠️ Please provide condition photo/video proof filename for safety tracking.")
                 else:
                     new_id = int(df_requests["id"].max() + 1) if not df_requests.empty else 1
                     new_row = pd.DataFrame([{
@@ -184,19 +182,19 @@ if role == "Student / Researcher Portal":
                         "equipment": equipment,
                         "reason": clean_reason,
                         "skill_id": skill_id,
-                        "proof_info": clean_proof,
+                        "proof_filename": "Awaiting Handover",
                         "status": "Pending"
                     }])
                     df_requests = pd.concat([df_requests, new_row], ignore_index=True)
                     save_data(df_requests)
-                    st.success("✅ Secure booking request submitted with condition proof! Status updated above.")
+                    st.success("✅ Booking request submitted successfully! Status updated above.")
                     st.rerun()
 
         st.subheader("📋 My Request Records")
         if not my_reqs.empty:
             st.dataframe(my_reqs, use_container_width=True)
     else:
-        st.warning("🔒 Please verify your Student Roll No / ID above to unlock the booking dashboard.")
+        st.warning("🔒 Please verify your Student Roll No / ID above to access the booking dashboard.")
 
 elif role == "Lab Manager (Owner)":
     st.subheader("🔒 Lab Manager Control Center")
@@ -204,16 +202,9 @@ elif role == "Lab Manager (Owner)":
     
     if password == ADMIN_PASSWORD:
         st.success("🔓 Access Granted!")
-        st.write("Review incoming verified student requests, manage equipment stock, and oversee lab resource allocation.")
+        st.write("Review requests, manage stock, and upload condition proofs during equipment Hand-Over or Return.")
         
-        pending_df = df_requests[df_requests["status"] == "Pending"] if not df_requests.empty else pd.DataFrame()
         current_stock = get_available_stock()
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("Total Equipment Types", len(EQUIPMENT_STOCK))
-        with col2:
-            st.metric("Pending Approvals", len(pending_df) if not pending_df.empty else 0)
         
         st.markdown("---")
         st.subheader("📊 Current Live Stock Status")
@@ -226,28 +217,47 @@ elif role == "Lab Manager (Owner)":
             st.dataframe(df_requests, use_container_width=True)
             
             req_ids = df_requests["id"].tolist()
-            selected_id = st.selectbox("Select Request ID to Update Status:", req_ids) if req_ids else None
+            selected_id = st.selectbox("Select Request ID to Manage:", req_ids) if req_ids else None
             
             if selected_id:
-                action = st.radio("Action:", ["Approve", "Reject"], horizontal=True)
-                if st.button("Update Request Status"):
-                    # Check stock if approving
-                    selected_row = df_requests[df_requests["id"] == selected_id].iloc[0]
-                    eq_item = selected_row["equipment"]
+                selected_row = df_requests[df_requests["id"] == selected_id].iloc[0]
+                st.write(f"**Selected Request:** Student: {selected_row['user']} | Equipment: {selected_row['equipment']} | Status: {selected_row['status']}")
+                
+                action = st.selectbox("Select Action / Status Update:", ["Approve & Hand Over (Upload Proof)", "Reject", "Mark as Returned & Verify Condition"])
+                
+                # Actual file uploader for handover or return proof
+                uploaded_proof = st.file_uploader("Upload Condition Photo/Video Proof (Handover / Return):", type=["png", "jpg", "jpeg", "mp4"])
+                
+                if st.button("Confirm Status & Save Proof"):
+                    proof_name = uploaded_proof.name if uploaded_proof is not None else "No File Uploaded"
                     
-                    if action == "Approve" and current_stock.get(eq_item, 0) <= 0:
-                        st.error(f"Cannot approve! '{eq_item}' is completely out of stock.")
-                    else:
-                        df_requests.loc[df_requests["id"] == selected_id, "status"] = "Approved" if action == "Approve" else "Rejected"
+                    if "Approve" in action:
+                        if current_stock.get(selected_row['equipment'], 0) <= 0:
+                            st.error("Cannot approve! Equipment is out of stock.")
+                        else:
+                            df_requests.loc[df_requests["id"] == selected_id, "status"] = "Handed Over"
+                            df_requests.loc[df_requests["id"] == selected_id, "proof_filename"] = f"Handover: {proof_name}"
+                            save_data(df_requests)
+                            st.success(f"Request #{selected_id} approved and marked as Handed Over with proof!")
+                            st.rerun()
+                    elif "Reject" in action:
+                        df_requests.loc[df_requests["id"] == selected_id, "status"] = "Rejected"
+                        df_requests.loc[df_requests["id"] == selected_id, "proof_filename"] = "Rejected"
                         save_data(df_requests)
-                        st.success(f"Request #{selected_id} updated to {action}ed!")
+                        st.success(f"Request #{selected_id} has been rejected.")
+                        st.rerun()
+                    elif "Returned" in action:
+                        df_requests.loc[df_requests["id"] == selected_id, "status"] = "Returned"
+                        df_requests.loc[df_requests["id"] == selected_id, "proof_filename"] = f"Return Verified: {proof_name}"
+                        save_data(df_requests)
+                        st.success(f"Equipment for Request #{selected_id} marked as Returned safely with condition proof!")
                         st.rerun()
         else:
-            st.info("No pending requests to review.")
+            st.info("No requests to review.")
     elif password != "":
-        st.error("❌ Incorrect Password! Only authorized Lab Managers can access this panel.")
+        st.error("❌ Incorrect Password!")
     else:
-        st.info("Please enter the administrator password to unlock control features.")
+        st.info("Please enter the administrator password.")
 
 else:
     st.subheader("📜 Audit & Compliance Log")
