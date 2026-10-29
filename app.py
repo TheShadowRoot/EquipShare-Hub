@@ -22,7 +22,15 @@ VALID_SKILL_IDS = [
 
 def load_data():
     if os.path.exists(CSV_FILE):
-        return pd.read_csv(CSV_FILE)
+        df = pd.read_csv(CSV_FILE)
+        # Ensure all text columns are treated as string to prevent LossySetItemError
+        text_cols = ["user", "student_id", "university", "equipment", "reason", "skill_id", "proof_filename", "return_deadline", "status"]
+        for col in text_cols:
+            if col not in df.columns:
+                df[col] = ""
+            else:
+                df[col] = df[col].astype(str)
+        return df
     else:
         return pd.DataFrame(columns=[
             "id", "user", "student_id", "university", "equipment", 
@@ -164,7 +172,6 @@ if role == "Student / Researcher Portal":
         else:
             st.info("ℹ️ You have no active requests. Submit a booking below.")
 
-        # Student action to initiate return if equipment is currently handed over
         active_handovers = my_reqs[my_reqs["status"] == "Handed Over"] if not my_reqs.empty else pd.DataFrame()
         if not active_handovers.empty:
             st.markdown("---")
@@ -272,18 +279,16 @@ else:
                         "Verify Return & Close Request (Safe Return)"
                     ])
                     
-                    # Optional proof file uploader for manager actions
                     manager_proof = st.file_uploader("Upload Verification Proof File (Optional):", type=["png", "jpg", "jpeg", "mp4"])
                     
                     if st.button("Confirm Manager Action"):
-                        p_name = manager_proof.name if manager_proof is not None else selected_row.get("proof_filename", "No Proof")
+                        p_name = manager_proof.name if manager_proof is not None else str(selected_row.get("proof_filename", "No Proof"))
                         fresh_df = load_data()
                         
                         if "Approve" in action:
                             if current_stock.get(selected_row['equipment'], 0) <= 0:
                                 st.error("Cannot approve! Equipment is out of stock.")
                             else:
-                                # Set return deadline to 7 days from today
                                 due_date = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
                                 fresh_df.loc[fresh_df["id"] == selected_id, "status"] = "Handed Over"
                                 fresh_df.loc[fresh_df["id"] == selected_id, "return_deadline"] = due_date
